@@ -1,1 +1,2 @@
-from .interface import Communicator
+from .communicator import Communicator
+from .mpi_communicator import MPICommunicator, MPICommunicatorRequest
