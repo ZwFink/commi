@@ -2,30 +2,54 @@ import pytest
 from commi import MPICommunicator, Status
 
 @pytest.mark.mpi
-def test_mpi_sendrecv():
+@pytest.mark.parametrize("use_status", [False, True])
+def test_mpi_sendrecv(use_status):
     from mpi4py import MPI
     mpi_comm = MPI.COMM_WORLD
     assert mpi_comm.Get_size() == 2
     commi_comm = MPICommunicator(mpi_comm)
     rank = commi_comm.Get_rank()
     partner_rank = int(not rank)
+
+    if use_status:
+        st = Status()
+    else:
+        st = None
+
     if rank == 0:
         commi_comm.send(1, dest=partner_rank, tag=0)
-        val = commi_comm.recv(source=partner_rank, tag=1)
+        val = commi_comm.recv(source=partner_rank, tag=1, status=st)
         assert val == 12345
+        if use_status:
+            assert st.COMMI_TAG == 1
+            assert st.COMMI_SOURCE == partner_rank
+            assert st.count == 15
+            assert st.cancelled == 0
+
     else:
-        val = commi_comm.recv(source=partner_rank, tag=0)
+        val = commi_comm.recv(source=partner_rank, tag=0, status=st)
         commi_comm.send(12345, dest=partner_rank, tag=1)
         assert val == 1
+        if use_status:
+            assert st.COMMI_TAG == 0
+            assert st.COMMI_SOURCE == partner_rank
+            assert st.count == 5
+            assert st.cancelled == 0
+
 
 @pytest.mark.mpi
-def test_mpi_sendrecv_np():
+@pytest.mark.parametrize("use_status", [False, True])
+def test_mpi_sendrecv_np(use_status):
     pytest.importorskip("numpy")
     import numpy as np
     from mpi4py import MPI
 
     mpi_comm = MPI.COMM_WORLD
     commi_comm = MPICommunicator(mpi_comm)
+    if use_status:
+        st = Status()
+    else:
+        st = None
 
     rank = commi_comm.Get_rank()
     partner_rank = int(not rank)
@@ -33,13 +57,25 @@ def test_mpi_sendrecv_np():
     data_2 = np.arange(10, 0, -1)
     if rank == 0:
         commi_comm.Send(data_1, dest=partner_rank, tag=0)
-        commi_comm.Recv(data_2, source=partner_rank, tag=1)
+        commi_comm.Recv(data_2, source=partner_rank, tag=1, status=st)
         assert np.allclose(data_1, data_2)
+        if use_status:
+            assert st.COMMI_TAG == 1
+            assert st.COMMI_SOURCE == partner_rank
+            # 80, not ten because unit is bytes
+            assert st.count == 80
+            assert st.cancelled == 0
     else:
         data_recv = np.arange(20, 30)
-        commi_comm.Recv(data_recv, source=partner_rank, tag=0)
+        commi_comm.Recv(data_recv, source=partner_rank, tag=0, status=st)
         commi_comm.Send(data_1, dest=partner_rank, tag=1)
         assert np.allclose(data_recv, data_1)
+        if use_status:
+            assert st.COMMI_TAG == 0
+            assert st.COMMI_SOURCE == partner_rank
+            # 80, not ten because unit is bytes
+            assert st.count == 80
+            assert st.cancelled == 0
 
 
 @pytest.mark.mpi
