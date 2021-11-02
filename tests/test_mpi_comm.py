@@ -1,5 +1,5 @@
 import pytest
-from commi import MPICommunicator, MPICommunicatorRequest
+from commi import MPICommunicator, Status
 
 @pytest.mark.mpi
 def test_mpi_sendrecv():
@@ -92,3 +92,17 @@ def test_mpi_isendrecv_np():
         req1.wait()
         req2.wait()
         assert np.allclose(data_recv, data_1)
+
+def test_status_conversion_copy():
+    from commi.mpi_communicator import _wrap_status
+    from mpi4py import MPI
+    st_mpi = MPI.Status()
+    st_commi = Status(st_mpi.Get_count(),
+                      st_mpi.Is_cancelled(),
+                      st_mpi.Get_source(),
+                      st_mpi.Get_tag(),
+                      st_mpi.Get_error()
+                      )
+
+    conv_status = _wrap_status(st_mpi)
+    assert conv_status == st_commi

@@ -1,5 +1,6 @@
 from mpi4py import MPI
-from . import Communicator
+from . import Communicator, Status, Request
+from functools import singledispatch
 
 class MPICommunicator(Communicator):
     def __init__(self, mpi_comm):
@@ -19,4 +20,16 @@ class MPICommunicator(Communicator):
         return self._comm
 
 
-MPICommunicatorRequest = MPI.Request
+Request = MPI.Request
+
+
+def _wrap_status(s: MPI.Status) -> Status:
+    return _copy_status(Status(), s)
+
+def _copy_status(s1: Status, s2: MPI.Status) -> Status:
+    s1.count = s2.Get_count()
+    s1.cancelled = s2.Is_cancelled()
+    s1.COMMI_SOURCE = s2.Get_source()
+    s1.COMMI_TAG = s2.Get_tag()
+    s1.error = s2.Get_error()
+    return s1
