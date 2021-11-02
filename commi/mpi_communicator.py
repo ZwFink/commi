@@ -2,7 +2,7 @@ from mpi4py import MPI
 from . import Communicator, Status, Request
 from functools import singledispatch
 
-class MPICommunicator(Communicator):
+class MPICommunicator:
     def __init__(self, mpi_comm):
         self._comm = mpi_comm
 
@@ -19,6 +19,8 @@ class MPICommunicator(Communicator):
     def get_communicator(self):
         return self._comm
 
+
+Communicator.register(MPICommunicator)
 
 Request = MPI.Request
 
