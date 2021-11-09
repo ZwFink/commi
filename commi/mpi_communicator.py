@@ -14,6 +14,9 @@ class MPICommunicator:
         self.isend = self._comm.isend
         self.irecv = self._comm.irecv
         self.Get_rank = self._comm.Get_rank
+        self.Get_size = self._comm.Get_size
+        self.iprobe = self._comm.iprobe
+        self.allgather = self._comm.allgather
 
     def Recv(self, buf, source: int = 0, tag: int = 0, status: Status = None):
         mpi_status = None
@@ -39,6 +42,12 @@ class MPICommunicator:
 
     def get_communicator(self):
         return self._comm
+
+    def Dup(self):
+        return MPICommunicator(self._comm.Dup())
+
+    def Free(self):
+        self._comm.Free()
 
 
 Communicator.register(MPICommunicator)
