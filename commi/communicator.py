@@ -21,6 +21,10 @@ class Communicator(ABC):
         pass
 
     @abstractmethod
+    def Dup(self):
+        pass
+
+    @abstractmethod
     def Isend(self, data, dest=0, tag=0):
         pass
 
@@ -41,7 +45,19 @@ class Communicator(ABC):
         pass
 
     @abstractmethod
+    def Get_size(self):
+        pass
+
+    @abstractmethod
     def get_communicator(self):
+        pass
+
+    @abstractmethod
+    def Free(self):
+        pass
+
+    @abstractmethod
+    def iprobe(self):
         pass
 
 class Request:

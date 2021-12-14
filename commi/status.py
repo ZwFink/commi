@@ -14,3 +14,9 @@ class Status:
         return self.COMMI_SOURCE
     def get_tag(self):
         return self.COMMI_TAG
+    @property
+    def source(self):
+        return self.get_source()
+    @source.setter
+    def source(self, val):
+        self.COMMI_SOURCE = val
