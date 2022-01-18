@@ -1,4 +1,4 @@
-from charm4py import Chare, coro, Channel, charm
+from charm4py import Chare, coro, Channel, charm, Reducer, Future
 from . import Communicator
 from typing import Any
 class CharmCommunicator(Chare):
@@ -9,6 +9,10 @@ class CharmCommunicator(Chare):
 
         self._channels_map = dict()
         self._channels = list()
+
+        # TODO: CollectiveResult class
+        self._allgather_fut = None
+        self._allgather_result = None
 
         # TODO: How can we do wildcard recvs without this?
         for i in range(n_elems):
@@ -41,6 +45,17 @@ class CharmCommunicator(Chare):
 
     def Free(self):
         pass
+
+    def allgather(self, sendobj: Any):
+        # TODO: Expose LocalFuture to user code
+        self._allgather_fut = Future()
+        self.reduce(self.thisProxy._return_from_allgather, sendobj, Reducer.gather)
+        self._allgather_fut.get()
+        return self._allgather_result
+
+    def _return_from_allgather(self, result):
+        self._allgather_result = result
+        self._allgather_fut()
 
     @coro
     def begin_exec(self, fn, *args, **kwargs):
