@@ -1,7 +1,101 @@
-from mpi4py import MPI
-Request = MPI.Request
+# from mpi4py import MPI
+# Request = MPI.Request
+
+# class Request:
+#     @classmethod
+#     def waitall(requests):
+#         MPI.Request.Waitall(requests)
+from charm4py import Chare, coro, Channel, charm, Reducer, Future
+from collections import defaultdict
+import numpy as np
+
+def Waitsome(requests):
+    # is there a better way to force a check for messages?
+    charm.sleep(0)
+    idxes = []
+    for idx, r in enumerate(requests):
+        value = r.recvMgr.tryReceiveFromChannelWithTag(r.ch, r.tag)
+        if value is not None:
+            idxes.append(idx)
+            r._CopyBuf(value)
+            r._Complete()
+    if len(idxes) == 0:
+        return None
+    return idxes
+
+
+INCOMPLETE=0
+COMPLETE=1
 
 class Request:
-    @classmethod
-    def waitall(requests):
-        MPI.Request.Waitall(requests)
+    def __init__(self):
+        self.state = INCOMPLETE
+    def Wait(self):
+        return
+    def _Complete(self):
+        self.state = COMPLETE
+    def Test(self):
+        return self.state == COMPLETE
+
+class RecvRequest(Request):
+    def __init__(self, buf, recvMgr, ch, tag):
+        super().__init__()
+        self.buf = buf
+        self.ch = ch
+        self.recvMgr = recvMgr
+        self.tag = tag
+
+    def Wait(self):
+        # TODO: tag
+        d = self.recvMgr.receiveFromChannelWithTag(self.ch, self.tag)
+        self._Complete()
+        # print(tag, d)
+        if self.buf is not None:
+            np.copyto(self.buf, d)
+        else:
+            return d
+    def _CopyBuf(self, value):
+        np.copyto(self.buf, value)
+
+class SendRequest(Request):
+    # Currently, charm4py has no ZC
+    def Wait(self):
+        self._Complete()
+        return
+
+class RecvManager:
+    def __init__(self):
+
+        def __create():
+            return defaultdict(list)
+        self.whatever : defaultdict[Channel, defaultdict[int, list]] = defaultdict(__create)
+
+
+    def tryReceiveFromChannelWithTag(self, ch: Channel, tag: int):
+        sender = self.whatever[ch]
+
+        received = len(sender[tag])
+        if not received:
+          if ch.ready():
+              recvtag, msg = ch.recv()
+              sender[recvtag].append(msg)
+              if recvtag == tag:
+                  return sender[recvtag].pop()
+        return None
+
+    def receiveFromChannelWithTag(self, ch: Channel, tag: int):
+        sender = self.whatever[ch]
+
+        received = len(sender[tag])
+        if not received:
+          recvtag, msg = ch.recv()
+          sender[recvtag].append(msg)
+          if(recvtag == 0):
+            print("Found tag 0")
+
+          while recvtag != tag:
+              recvtag, msg = ch.recv()
+              sender[recvtag].append(msg)
+
+        return sender[tag].pop(0)
+
