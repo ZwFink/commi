@@ -93,16 +93,27 @@ class RecvManager:
     def receiveFromChannelWithTag(self, ch: Channel, tag: int):
         sender = self.whatever[ch]
 
-        received = len(sender[tag])
+        if tag == -1:
+            try:
+                truetag, received = next(iter(sender.items()))
+            except StopIteration:
+                truetag = tag
+                received = 0
+        else:
+            received = len(sender[tag])
+            truetag = tag
         if not received:
           recvtag, msg = ch.recv()
           sender[recvtag].append(msg)
-          if(recvtag == 0):
-            print("Found tag 0")
 
-          while recvtag != tag:
+          if tag == -1:
+                truetag = recvtag
+          else:
+            while recvtag != tag:
               recvtag, msg = ch.recv()
+              truetag = recvtag
               sender[recvtag].append(msg)
 
-        return sender[tag].pop(0)
+        # truetag != tag iff tag == -1
+        return sender[truetag].pop(0)
 
