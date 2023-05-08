@@ -23,6 +23,13 @@ def Waitsome(requests):
         return None
     return idxes
 
+def Waitall(requests):
+    idxes = []
+    for idx, r in enumerate(requests):
+        r.Wait()
+        idxes.append(idx)
+    return idxes
+
 
 INCOMPLETE=0
 COMPLETE=1
@@ -73,15 +80,15 @@ class RecvManager:
 
     def tryReceiveFromChannelWithTag(self, ch: Channel, tag: int):
         sender = self.whatever[ch]
-
-        received = len(sender[tag])
-        if not received:
-          if ch.ready():
-              recvtag, msg = ch.recv()
-              sender[recvtag].append(msg)
-              if recvtag == tag:
-                  return sender[recvtag].pop()
-        return None
+        retval = None
+        if sender[tag]:
+            retval = sender[tag].pop()
+        while ch.ready():
+            recvtag, msg = ch.recv()
+            sender[recvtag].append(msg)
+            if retval is None and recvtag == tag:
+                retval = sender[recvtag].pop()
+        return retval
 
     def receiveFromChannelWithTag(self, ch: Channel, tag: int):
         sender = self.whatever[ch]

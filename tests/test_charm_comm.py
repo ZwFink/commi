@@ -48,16 +48,21 @@ def ep(comm, id):
         reqs = list()
         for i in range(100):
             reqs.append(comm.Irecv(bufs[i], source=0, tag=i))
-        completed_idxes = commi.request.Waitsome(reqs)
 
-        print(f"{len(completed_idxes)} requests were ready right away.")
-        print(completed_idxes)
-        for i in completed_idxes:
-            if not reqs[i].Test():
-                print(f"Request i is not complete?")
-            if bufs[i] != 2*i:
-                print(f"{bufs[i]}, {i}:darnet")
-        print("Done")
+        num_complete = 0
+        while num_complete != 100:
+            completed_idxes = commi.request.Waitsome(reqs)
+            if completed_idxes:
+                num_complete += len(completed_idxes)
+
+                print(f"{len(completed_idxes)} requests were ready right away., total {num_complete} now done")
+                print(completed_idxes)
+                for i in completed_idxes:
+                    if not reqs[i].Test():
+                        print(f"Request i is not complete?")
+                    if bufs[i] != 2*i:
+                        print(f"{bufs[i]}, {i}:darnet")
+    print("Done")
 
 
 

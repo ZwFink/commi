@@ -1,7 +1,7 @@
 from .communicator import Communicator, Request
 from .status import Status, COMMI_STATUS_IGNORE, COMMI_STATUS_IGNORE
 from .request import Request, SendRequest, RecvRequest, RecvManager
-from .mpi_communicator import MPICommunicator
+#from .mpi_communicator import MPICommunicator
 from .charm_communicator import *
 from enum import Enum
 from functools import wraps
@@ -15,11 +15,15 @@ class CommiBackendSpecifier(Enum):
     MPI_BACKEND = 1
 def CreateCharmCommunicator(args, nelems):
     from charm4py import Array
+    print(f"Creating array with {nelems} elems")
     return Array(CharmCommunicator, nelems, args=args)
 
 def Start(fn):
     from charm4py import charm
     charm.start(fn, classes=[CharmCommunicator])
+
+def exit():
+  charm.exit()
 
 
 def commi_entry_point(backend_spec: CommiBackendSpecifier, num_pes: int):
