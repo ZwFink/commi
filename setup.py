@@ -15,7 +15,8 @@ setup(
     url = "https://github.com/zwfink/commi",
     packages=['commi', 'tests'],
     long_description=read('README.md'),
-    install_requires=['mpi4py', 'pytest', 'pytest-mpi'],
+    #install_requires=['mpi4py', 'pytest', 'pytest-mpi'],
+    install_requires=['mpi4py'],
     classifiers=[
         "Development Status :: 1 - Planning",
     ],

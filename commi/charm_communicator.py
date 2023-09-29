@@ -1,9 +1,25 @@
-from charm4py import Chare, coro, Channel, charm, Reducer, Future, register
+from charm4py import Chare, coro, Channel, charm, Reducer, Future, register, Reducer
 from . import Communicator
 from . import Request, SendRequest, RecvRequest, RecvManager
 from typing import Any
 import numpy as np
+import mpi4py
+mpi4py.rc.initialize = False
+from mpi4py import MPI
 
+def reducer_map(op):
+  if op == MPI.SUM:
+    return  Reducer.sum
+  if op == MPI.MAX:
+    return Reducer.max
+  if op == MPI.MIN:
+    return Reducer.min
+  if op == MPI.LOR:
+    return Reducer.logical_or
+  if op == MPI.LAND:
+    return Reducer.logical_and
+  print("We didn't find it!")
+  return op
 
 
 @register
@@ -30,21 +46,38 @@ class CharmCommunicator(Chare):
     def Send(self, buf: Any = None, dest: int = -1, tag: int = -1, status: Any = None):
         ch = self._get_channel_to(dest)
         ch.send(tag, buf)
+    @coro
     def Recv(self, buf: Any = None, source: int = -1, tag: int = -1, status: Any = None):
         if source == -1:
-            gen = charm.iwait(self._channels)
-            recv_ch = next(gen)
-            tag, recv = recv_ch.recv()
+            while True:
+              found = False
+              for ch in self._channels:
+                if ch.ready():
+                  tag, recv = ch.recv()
+                  recv_ch = ch
+                  found = True
+                  break 
+              if found:
+                break
+              else:
+                f = Future()
+                f(0)
+                f.get()
+            #gen = charm.iwait(self._channels)
+            #for ch in charm.iwait(self._channels):
+            #  tag, recv = ch.recv()
+            #  recv_ch = ch
+            #  break
             if status:
                status.source = recv_ch._chare_idx
                status.tag = tag
-            del gen
             return recv
         recv = self._mgr.receiveFromChannelWithTag(self._get_channel_to(source), tag)
         # ch = self._get_channel_to(source)
         # tag, recv = ch.recv()
         return recv
 
+    @coro
     def recv(self, buf: Any = None, source: int = -1, tag: int = -1, status: Any = None):
       return self.Recv(buf, source, tag, status)
 
@@ -57,10 +90,26 @@ class CharmCommunicator(Chare):
     def isend(self, buf: Any = None, dest: int = -1, tag: int = -1, status: Any = None):
       return self.Isend(buf, dest, tag, status)
 
+    @coro
     def barrier(self):
         self.allreduce().get()
+    @coro
     def Barrier(self):
       self.barrier()
+
+    @coro
+    def owlreduce(self, data, op=None):
+      real_op = reducer_map(op)
+      was_scalar = False
+      if np.isscalar(data):
+        was_scalar = True
+        data = np.array([data], dtype=data.dtype) 
+      retval = self.allreduce(data, reducer=real_op).get()
+      if was_scalar:
+        return np.array(retval)
+      if isinstance(data, np.ndarray):
+        return np.array([retval])
+      return retval
 
     @coro
     def bcast(self, data, root=0):
@@ -114,16 +163,35 @@ class CharmCommunicator(Chare):
 
     def Dup(self):
         # NOTE: This is dangerous
-        return self._comm
+        return self
 
     def Free(self):
         pass
+
+    @coro
+    def redux(self, data, op, root=-1):
+      real_op = reducer_map(op)
+      if self.rank == root:
+        self._allgather_fut = Future()
+      self.reduce(self.thisProxy[0]._return_from_allgather, data, real_op)
+      if self.rank == root:
+        self._allgather_fut.get()
+        return self._allgather_result
 
     @coro
     def allgather(self, sendobj: Any):
         # TODO: Expose LocalFuture to user code
         self._allgather_fut = Future()
         self.reduce(self.thisProxy._return_from_allgather, sendobj, Reducer.gather)
+        self._allgather_fut.get()
+        return self._allgather_result
+
+    @coro
+    def gather(self, sendobj: Any, root=-1):
+      if self.rank == root:
+        self._allgather_fut = Future()
+      self.reduce(self.thisProxy[root]._return_from_allgather, sendobj, Reducer.gather)
+      if self.rank == root:
         self._allgather_fut.get()
         return self._allgather_result
 
@@ -148,3 +216,4 @@ class CharmCommunicator(Chare):
 Communicator.register(CharmCommunicator)
 
 Request = None
+
