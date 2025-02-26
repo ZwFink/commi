@@ -63,6 +63,8 @@ def ep(comm, id):
                     if bufs[i] != 2*i:
                         print(f"{bufs[i]}, {i}:darnet")
     print("Done")
+    comm.barrier()
+    charm.exit(0)
 
 
 
