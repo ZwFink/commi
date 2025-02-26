@@ -7,6 +7,7 @@
 #         MPI.Request.Waitall(requests)
 from charm4py import Chare, coro, Channel, charm, Reducer, Future
 from collections import defaultdict
+from .status import Status
 import numpy as np
 
 def Waitsome(requests):
@@ -30,6 +31,21 @@ def Waitall(requests):
         idxes.append(idx)
     return idxes
 
+def Waitany(requests, status=None):
+    if status is None:
+        status = Status()
+    chs = list()
+    for r in requests:
+        r.ch._tag = r.tag
+        r.ch._request = r
+        chs.append(r.ch)
+    for idx, channel in enumerate(charm.iwait(chs)):
+        r = channel._request
+        r.Wait()
+        status.tag = channel._tag
+        status.source = channel._chare_idx
+        return idx
+    return -1
 
 INCOMPLETE=0
 COMPLETE=1

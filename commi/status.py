@@ -38,4 +38,10 @@ class Status:
     @tag.deleter
     def tag(self):
         del self.COMMI_TAG
+
+    def Get_tag(self):
+        return self.COMMI_TAG
+    
+    def Get_source(self):
+        return self.COMMI_SOURCE
     
