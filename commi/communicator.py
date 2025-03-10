@@ -60,6 +60,9 @@ class Communicator(ABC):
     def get_communicator(self):
         pass
 
+    @abstractmethod
+    def Migrate(self):
+        pass
 
 class Request:
     def __init__(self):
