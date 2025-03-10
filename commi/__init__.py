@@ -16,7 +16,7 @@ class CommiBackendSpecifier(Enum):
 def CreateCharmCommunicator(args, nelems):
     from charm4py import Array
     print(f"Creating array with {nelems} elems")
-    return Array(CharmCommunicator, nelems, args=args)
+    return Array(CharmCommunicator, nelems, args=args, useAtSync=True)
 
 def Start(fn):
     from charm4py import charm

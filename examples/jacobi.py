@@ -140,9 +140,9 @@ def main(comm):
             recv_reqs.append(req6)
             send_reqs.append(req7)
 
-        for _ in recv_reqs:
-            idx = commi.request.Waitany(recv_reqs, status=recv_status)
-            tag = recv_status.Get_tag()
+        idxes = commi.request.Waitall(recv_reqs)
+        for idx in idxes:
+            tag = recv_reqs[idx].tag
             if tag == 101:
                 unpack_top(T, top_buf_in)
             elif tag == 99:
@@ -158,6 +158,22 @@ def main(comm):
 
         newT, T = T, newT
         enforce_BC(T)
+
+        if i and i % 10 == 0:
+            comm.Migrate()
+            # it's cheaper to re-allocate these things than to serialize them
+            # by re-defining them here, they values become dead
+            # so, they are excluded from serialization
+            top_buf_out = numpy.zeros(width)
+            top_buf_in = numpy.zeros(width)
+            bot_buf_out = numpy.zeros(width)
+            bot_buf_in = numpy.zeros(width)
+
+            right_buf_out = numpy.zeros(height)
+            right_buf_in = numpy.zeros(height)
+            left_buf_out = numpy.zeros(height)
+            left_buf_in = numpy.zeros(height)
+            newT = numpy.ones(total_size, dtype=numpy.float64)
 
     tend = time.time()
     if me == 0:

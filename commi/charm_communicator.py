@@ -203,6 +203,9 @@ class CharmCommunicator(Chare):
     def begin_exec(self, fn, *args, **kwargs):
         fn(self, *args, **kwargs)
 
+    def Migrate(self):
+        self.AtSyncAndWait()
+
     def _get_channel_to(self, chare_idx):
         if chare_idx not in self._channels_map:
             self._channels_map[chare_idx] = Channel(self,

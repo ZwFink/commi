@@ -80,6 +80,13 @@ class RecvRequest(Request):
     def _CopyBuf(self, value):
         np.copyto(self.buf, value)
 
+    def __getstate__(self):
+        return self.buf, None, None, self.tag
+
+    def __setstate__(self, state):
+        self.buf, self.ch, self.recvMgr, self.tag = state
+        self.recvMgr = RecvManager()
+
 class SendRequest(Request):
     # Currently, charm4py has no ZC
     def Wait(self):
