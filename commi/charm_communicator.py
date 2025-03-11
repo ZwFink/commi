@@ -38,11 +38,29 @@ class CharmCommunicator(Chare):
         self._allgather_fut = None
         self._allgather_result = None
 
-        # TODO: How can we do wildcard recvs without this?
-        for i in range(n_elems):
-            if i != self.Get_rank():
-                self._get_channel_to(i)
+        # # TODO: How can we do wildcard recvs without this?
+        # for i in range(n_elems):
+            # if i != self.Get_rank():
+                # self._get_channel_to(i)
 
+    def __getstate__(self):
+      state = self.__dict__.copy()
+      parent_state = super().__getstate__()
+      del state['_mgr']
+      try:
+        del state['_allgather_fut']
+      except:
+        pass
+      return (parent_state, state)
+
+    def __setstate__(self, state):
+      parent_state, state = state
+      super().__setstate__(parent_state)
+      self.__dict__.update(state)
+      self._mgr = RecvManager()
+      self._allgather_fut = None
+
+    @coro
     def Send(self, buf: Any = None, dest: int = -1, tag: int = -1, status: Any = None):
         ch = self._get_channel_to(dest)
         ch.send(tag, buf)
@@ -116,13 +134,16 @@ class CharmCommunicator(Chare):
       self._bcast_fut = Future()
       if self.Get_rank() == root:
         self.thisProxy._bcast_recv(data, awaitable=True).get()
-      return self._bcast_fut.get()
+      result = self._bcast_fut.get()
+      del self._bcast_fut
+      return result
 
     def iprobe(self):
       return False
       
 
     def _bcast_recv(self, data):
+      assert self._bcast_fut is not None
       self._bcast_fut(data)
 
     @coro
@@ -152,6 +173,26 @@ class CharmCommunicator(Chare):
       else:
         data = self._get_channel_to(root).recv()
         return data[0]
+
+    @coro
+    def scan(self, data):
+      if self.Get_rank() == 0:
+         retval = data
+         self.Send(data, dest = 1)
+         self.barrier()
+         return retval
+
+      if self.Get_rank() == self.Get_size() - 1:
+        self.barrier()
+        return self.Recv(source = self.Get_rank() - 1)
+      
+      target = self.Get_rank() + 1
+      recv = self.Recv(self.Get_rank() - 1)
+      retval = recv
+      sendval = data + recv
+      self.Send(sendval, dest = target)
+      self.barrier()
+      return retval 
 
     def Get_rank(self):
         return self.thisIndex[0]
@@ -198,7 +239,6 @@ class CharmCommunicator(Chare):
     def _return_from_allgather(self, result):
         self._allgather_result = result
         self._allgather_fut()
-
     @coro
     def begin_exec(self, fn, *args, **kwargs):
         fn(self, *args, **kwargs)
@@ -206,15 +246,24 @@ class CharmCommunicator(Chare):
     def Migrate(self):
         self.AtSyncAndWait()
 
+    @coro
     def _get_channel_to(self, chare_idx):
         if chare_idx not in self._channels_map:
             self._channels_map[chare_idx] = Channel(self,
                                                     remote=self._comm[(
                                                         chare_idx,)]
                                                     )
-            self._channels_map[chare_idx]._chare_idx = chare_idx
-            self._channels.append(self._channels_map[chare_idx])
+            self.thisProxy[chare_idx]._receive_channel_request(self.thisIndex[0], self.thisProxy[self.thisIndex[0]], awaitable=True).get()
+            # self._channels_map[chare_idx]._chare_idx = chare_idx
+            # self._channels.append(self._channels_map[chare_idx])
         return self._channels_map[chare_idx]
+
+    def _receive_channel_request(self, remote_idx, remote_chare):
+      if remote_idx not in self._channels_map:
+        self._channels_map[remote_idx] = Channel(self, remote=remote_chare)
+        self._channels_map[remote_idx]._chare_idx = remote_idx
+        self._channels.append(self._channels_map[remote_idx])
+
 
 Communicator.register(CharmCommunicator)
 
