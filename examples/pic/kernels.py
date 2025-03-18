@@ -243,7 +243,7 @@ def write_output(filename, timing_data, prefix=None):
     header = "Rank,Iteration,Elapsed Time,Iteration Time,Comp Time,Comm Time,Start Particles,End Particles\n"
     with open(filename, 'w') as open_file:
         open_file.write(f"#{' '.join(sys.argv)}\n")
-        open_file.write("#NOTE: Iteration 0 is a warmup iteration\n")
+        open_file.write("#NOTE: Iterations 0-10 are warmup iterations\n")
         open_file.write(header)
 
         for rank, rank_info in enumerate(timing_data):

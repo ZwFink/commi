@@ -113,11 +113,11 @@ def main(comm):
 
     # total time, compute time, communicate time, (total) simulation time,
     # start particles, end particles
-    timers = np.ndarray((iterations+1, 6), dtype=np.float64)
+    timers = np.ndarray((iterations+sim_params.warmup, 6), dtype=np.float64)
 
     # perform the simulation
-    for iter in range(iterations + 1):
-        if iter < 2:
+    for iter in range(iterations + sim_params.warmup):
+        if iter == 0 or iter == sim_params.warmup:
             # include some data for warmup iter, but
             # dont' include in total
             sim_start = wtime()
@@ -199,7 +199,9 @@ def main(comm):
         if rank == 0 and sim_params.verbose:
             print(f"Iteration {iter} complete in {iter_end - iter_start}s.")
 
-        if iter > 0 and iter % 10 == 0:
+        # Yes, this will migrate at iteration 0, but this is fine.
+        # Migration has some warmup overhead we'll get here.
+        if iter % sim_params.migration_delay == 0:
             comm.Migrate()
     comm.barrier()
     sim_end = wtime()
@@ -209,7 +211,7 @@ def main(comm):
     n_incorrect = 0
     id_checksum = 0
     for p in particles:
-        n_incorrect += int(verify_particle(p, L, iterations + 1))
+        n_incorrect += int(verify_particle(p, L, iterations + sim_params.warmup))
         id_checksum += int(p[PARTICLE_ID])
 
     total_particles = len(particles)
@@ -239,7 +241,10 @@ def main(comm):
 
 
 def _main(args):
-    comm = commi.CreateCharmCommunicator([256], 256)
+    import os
+    num_chares = int(os.environ['NUM_CHARES'])
+    print(f"Running simulation with {num_chares} chares")
+    comm = commi.CreateCharmCommunicator([num_chares], num_chares)
     comm.begin_exec(main)
 
 commi.Start(_main)

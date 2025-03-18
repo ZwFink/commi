@@ -16,7 +16,7 @@ setup(
     packages=['commi', 'tests'],
     long_description=read('README.md'),
     #install_requires=['mpi4py', 'pytest', 'pytest-mpi'],
-    install_requires=['mpi4py'],
+    install_requires=['mpi4py', 'numba'],
     classifiers=[
         "Development Status :: 1 - Planning",
     ],
