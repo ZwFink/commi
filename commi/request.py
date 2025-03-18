@@ -95,10 +95,8 @@ class SendRequest(Request):
 
 class RecvManager:
     def __init__(self):
-
-        def __create():
-            return defaultdict(list)
-        self.whatever : defaultdict[Channel, defaultdict[int, list]] = defaultdict(__create)
+        create = lambda: defaultdict(list)
+        self.whatever : defaultdict[Channel, defaultdict[int, list]] = defaultdict(create)
 
 
     def tryReceiveFromChannelWithTag(self, ch: Channel, tag: int):
@@ -140,3 +138,12 @@ class RecvManager:
         # truetag != tag iff tag == -1
         return sender[truetag].pop(0)
 
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state['whatever']
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.whatever = defaultdict(lambda: defaultdict(list))
