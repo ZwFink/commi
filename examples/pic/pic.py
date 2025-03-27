@@ -102,14 +102,26 @@ def main(comm):
 
     # use Python objects, not on critical path
     n_prefix = comm.scan(num_particles)
+    if rank == 0:
+        n_prefix = 0
     finish_particle_initialization(particles, n_prefix)
-    if True or sim_params.verbose:
+    if sim_params.verbose:
         for proc in range(num_procs):
             if proc == rank:
                 print(f"Processor {rank} has {num_particles} particles, prefix: {n_prefix}.")
     total_particles = comm.redux(num_particles, op=MPI.SUM, root=0)
     if rank == 0:
         print(f"Total particles: {total_particles}")
+
+    id_checksum = 0
+    for p in particles:
+        id_checksum += int(p[PARTICLE_ID])
+
+    total_particles = len(particles)
+    total_particles = comm.redux(total_particles, op=MPI.SUM, root=0)
+    id_checksum = comm.redux(id_checksum, op=MPI.SUM, root=0)
+    if rank == 0:
+        print(f"id_checksum: {id_checksum}")
 
     # total time, compute time, communicate time, (total) simulation time,
     # start particles, end particles
@@ -228,6 +240,8 @@ def main(comm):
         if total_incorrect:
             print(f"There are {total_incorrect} miscalculated particle locations.")
         else:
+            print(f"id_checksum: {id_checksum}")
+            print(f"num_particles_checksum: {num_particles_checksum}")
             print("Solution validates.")
         if sim_params.output:
             if sim_params.add_datetime:

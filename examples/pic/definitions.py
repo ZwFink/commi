@@ -67,9 +67,9 @@ def parsed_n(n):
 
 def parsed_period(i):
     p = int(i)
-    enforce(p > 0,
-            f"Period must be positive: {p}"
-            )
+    # enforce(p > 0,
+    #         f"Period must be positive: {p}"
+    #         )
     return p
 
 def parsed_k(i):
@@ -158,10 +158,16 @@ def parse_args(args):
                       "date/time to the filename provided to '--output'",
                       action='store_true'
                       )
+    argp.add_argument('--warmup',
+                      help="Number of warmup iterations",
+                      type=int,
+                      default=0
+                      )
     return argp.parse_known_args(args[1::])[0]
 
 def validate_args(parsed_args: dict):
-    enforce(parsed_args.migration_delay < parsed_args.period,
-            "Migration delay must be less than period, but: "
-            f"{parsed_args.migration_delay} > {parsed_args.period}"
-            )
+    # enforce(parsed_args.migration_delay < parsed_args.period,
+    #         "Migration delay must be less than period, but: "
+    #         f"{parsed_args.migration_delay} > {parsed_args.period}"
+    #         )
+    return True

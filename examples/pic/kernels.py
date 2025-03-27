@@ -29,7 +29,7 @@ def initialize_grid(tile: np.ndarray):
 
 def finish_particle_initialization(particles, num_particles_prefix):
     my_num_particles = len(particles)
-    ID = num_particles_prefix - my_num_particles + 1
+    ID = 1 + num_particles_prefix# - my_num_particles + 1
 
     for pi in range(my_num_particles):
         p = particles[pi]
