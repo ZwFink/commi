@@ -278,9 +278,9 @@ def main(comm):
 
             kernels.invokeJacobiKernel(d_temperature, d_new_temperature,
                                        block_width, block_height, block_depth, stream)
+            stream.synchronize()
 
 
-        stream.synchronize()
         compute_end_time = time.perf_counter()
 
         if current_iter % lb_period == 0:
