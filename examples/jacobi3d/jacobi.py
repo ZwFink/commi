@@ -264,11 +264,12 @@ def main(comm):
                 alpha_i = max(1.0, 100.0 * proc_num_fraction + 5.0 * (effective_iter / 30.0))
 
         num_invocations = max(1, int(round(alpha_i)))
-        total_invocations = comm.redux(num_invocations, root=0, op=MPI.SUM)
-        max_invocations = comm.redux(num_invocations, root=0, op=MPI.MAX)
-        if rank == 0:
-            average_invocations = max_invocations / (total_invocations / num_procs)
-            print(f"Load imbalance factor: {average_invocations}")
+        if current_iter == 0:
+            total_invocations = comm.redux(num_invocations, root=0, op=MPI.SUM)
+            max_invocations = comm.redux(num_invocations, root=0, op=MPI.MAX)
+            if rank == 0:
+                average_invocations = max_invocations / (total_invocations / num_procs)
+                print(f"Load imbalance factor: {average_invocations}")
         compute_start_time = time.perf_counter()
 
         for k in range(num_invocations):
