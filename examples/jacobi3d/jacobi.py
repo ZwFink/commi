@@ -14,12 +14,14 @@ from enum import Enum
 from functools import reduce
 import sys
 
+
 class Defaults(Enum):
     GRID_WIDTH = 64
     GRID_HEIGHT = 64
     GRID_DEPTH = 64
     NUM_ITERS = 100
     WARMUP_ITERS = 10
+    LB_PERIOD = 10
 
 def calc_num_procs_per_dim(num_procs, grid_w, grid_h, grid_d):
     """Calculates the 'optimal' 3D decomposition of processes."""
@@ -68,6 +70,9 @@ def calc_num_procs_per_dim(num_procs, grid_w, grid_h, grid_d):
 def main(comm):
     rank = comm.Get_rank()
     size = comm.Get_size()
+    n_physical_procs = comm.Get_physical_size()
+    initial_proc_num = comm.Get_proc_num()
+
 
     if rank == 0:
         parser = ArgumentParser(description="Jacobi3D implementation in MPI/CUDA (Host Staging)")
@@ -76,14 +81,17 @@ def main(comm):
         parser.add_argument('-z', '--grid_depth', type=int, default=Defaults.GRID_DEPTH.value)
         parser.add_argument('-i', '--iterations', type=int, default=Defaults.NUM_ITERS.value)
         parser.add_argument('-w', '--warmup_iterations', type=int, default=Defaults.WARMUP_ITERS.value)
-        args = parser.parse_args()
+        parser.add_argument('-l', '--lb_period', type=int, default=Defaults.LB_PERIOD.value,
+                            help='Load balancing period')
+        args = parser.parse_known_args(sys.argv[1::])[0]
         config = {
             'grid_width': args.grid_width,
             'grid_height': args.grid_height,
             'grid_depth': args.grid_depth,
             'n_iters': args.iterations,
             'warmup_iters': args.warmup_iterations,
-            'num_procs': size
+            'num_procs': size,
+            'lb_period': args.lb_period
         }
     else:
         config = None
@@ -96,6 +104,7 @@ def main(comm):
     n_iters = config['n_iters']
     warmup_iters = config['warmup_iters']
     num_procs = config['num_procs']
+    lb_period = config['lb_period']
 
     n_procs_xyz = calc_num_procs_per_dim(num_procs, grid_width, grid_height, grid_depth)
     n_procs_x, n_procs_y, n_procs_z = n_procs_xyz
@@ -187,26 +196,18 @@ def main(comm):
             t_start_total = time.perf_counter()
             total_comm_time = 0.0
 
-        d_temperature, d_new_temperature = d_new_temperature, d_temperature
-
-        kernels.invokeJacobiKernel(d_temperature, d_new_temperature,
-                                   block_width, block_height, block_depth, stream)
+        comm_start_time = time.perf_counter()
 
         for i in range(kernels.DIR_COUNT):
             if not bounds[i]:
                 kernels.invokePackingKernel(d_temperature, d_ghosts[i], i,
                                             block_width, block_height, block_depth, stream)
-
         stream.synchronize()
 
         for i in range(kernels.DIR_COUNT):
             if not bounds[i]:
                 d_ghosts[i].copy_to_host(h_ghosts[i], stream=stream)
-
-
         stream.synchronize()
-
-        comm_start_time = time.perf_counter()
 
         active_send_reqs = []
         active_recv_reqs = []
@@ -234,15 +235,12 @@ def main(comm):
         if current_iter >= warmup_iters:
             total_comm_time += (comm_end_time - comm_start_time)
 
-
         for direction in range(kernels.DIR_COUNT):
              opposite_direction = [kernels.RIGHT, kernels.LEFT, kernels.BOTTOM, kernels.TOP, kernels.BACK, kernels.FRONT][direction]
              neighbor_rank_recv = neighbors[opposite_direction]
              if neighbor_rank_recv != -1:
                  d_ghosts[direction].copy_to_device(h_ghosts[direction], stream=stream)
-
-
-        stream.synchronize()
+        stream.synchronize() 
 
         for direction in range(kernels.DIR_COUNT):
              opposite_direction = [kernels.RIGHT, kernels.LEFT, kernels.BOTTOM, kernels.TOP, kernels.BACK, kernels.FRONT][direction]
@@ -250,25 +248,76 @@ def main(comm):
              if neighbor_rank_recv != -1:
                 kernels.invokeUnpackingKernel(d_temperature, d_ghosts[direction], direction,
                                               block_width, block_height, block_depth, stream)
+        stream.synchronize() 
+
+
+        d_temperature, d_new_temperature = d_new_temperature, d_temperature
+
+        # Formula from Galvez 2018 Charmpy
+        alpha_i = 1.0
+        if num_procs > 0:
+            proc_num_fraction = initial_proc_num / n_physical_procs
+            if proc_num_fraction <= 0.2 or proc_num_fraction >= 0.8:
+                alpha_i = 10.0
+            else:
+                effective_iter = max(0, current_iter - warmup_iters)
+                alpha_i = max(1.0, 100.0 * proc_num_fraction + 5.0 * (effective_iter / 30.0))
+
+        num_invocations = max(1, int(round(alpha_i)))
+        total_invocations = comm.redux(num_invocations, root=0, op=MPI.SUM)
+        max_invocations = comm.redux(num_invocations, root=0, op=MPI.MAX)
+        if rank == 0:
+            average_invocations = max_invocations / (total_invocations / num_procs)
+            print(f"Load imbalance factor: {average_invocations}")
+        compute_start_time = time.perf_counter()
+
+        for k in range(num_invocations):
+            if k > 0:
+                 d_temperature, d_new_temperature = d_new_temperature, d_temperature
+
+            kernels.invokeJacobiKernel(d_temperature, d_new_temperature,
+                                       block_width, block_height, block_depth, stream)
+
 
         stream.synchronize()
+        compute_end_time = time.perf_counter()
 
-    # --- End Main Loop ---
+        if current_iter % lb_period == 0:
+            del d_temperature
+            del d_new_temperature
+            del h_ghosts
+            del d_ghosts
+            del stream
+
+            comm.Migrate()
+            stream = cuda.default_stream()
+            d_temperature = cuda.device_array(temp_size_elements, dtype=np.float64)
+            d_new_temperature = cuda.device_array(temp_size_elements, dtype=np.float64)
+            h_ghosts = [cuda.pinned_array(ghost_counts[i], dtype=np.float64)
+                        for i in range(kernels.DIR_COUNT)]
+            d_ghosts = [cuda.device_array(ghost_counts[i], dtype=np.float64)
+                for i in range(kernels.DIR_COUNT)]
+            neighbor_rank_recv = None
+            neighbor_rank_send = None
+            recv_buf = None
+
+
+
     comm.Barrier() # Ensure all ranks finish loop
     t_end_total = time.perf_counter()
 
     elapsed_time = t_end_total - t_start_total
     avg_comm_time = total_comm_time / n_iters if n_iters > 0 else 0
 
-    max_elapsed_time = comm.redux(elapsed_time, op=MPI.MAX, root=0)
-    max_avg_comm_time = comm.redux(avg_comm_time, op=MPI.MAX, root=0)
+    elapsed_time = t_end_total - t_start_total
+    avg_comm_time = avg_comm_time / n_iters
 
     if rank == 0:
-        avg_total_time_ms = (max_elapsed_time / n_iters) * 1e3 if n_iters > 0 else 0
-        avg_comm_time_ms = max_avg_comm_time * 1e3
+        avg_total_time_ms = (elapsed_time / n_iters) * 1e3 if n_iters > 0 else 0
+        avg_comm_time_ms = avg_comm_time * 1e3
 
         print(f"Execution Summary (Max across ranks):")
-        print(f"Total time (excluding warmup): {round(max_elapsed_time, 3)} s")
+        print(f"Total time (excluding warmup): {round(elapsed_time, 3)} s")
         if n_iters > 0:
             print(f"Average total time per iteration: {round(avg_total_time_ms, 3)} ms")
             print(f"Average communication time per iteration: {round(avg_comm_time_ms, 3)} ms")
