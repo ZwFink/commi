@@ -246,6 +246,12 @@ class CharmCommunicator(Chare):
     def Migrate(self):
         self.AtSyncAndWait()
 
+    def Get_proc_num(self):
+        return charm.myPe()
+
+    def Get_physical_size(self):
+        return charm.numPes()
+
     @coro
     def _get_channel_to(self, chare_idx):
         if chare_idx not in self._channels_map:
@@ -254,8 +260,8 @@ class CharmCommunicator(Chare):
                                                         chare_idx,)]
                                                     )
             self.thisProxy[chare_idx]._receive_channel_request(self.thisIndex[0], self.thisProxy[self.thisIndex[0]], awaitable=True).get()
-            # self._channels_map[chare_idx]._chare_idx = chare_idx
-            # self._channels.append(self._channels_map[chare_idx])
+            self._channels_map[chare_idx]._chare_idx = chare_idx
+            self._channels.append(self._channels_map[chare_idx])
         return self._channels_map[chare_idx]
 
     def _receive_channel_request(self, remote_idx, remote_chare):
