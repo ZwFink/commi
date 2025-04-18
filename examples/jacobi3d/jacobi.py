@@ -193,10 +193,13 @@ def main(comm):
     for current_iter in range(n_iters + warmup_iters):
         if current_iter == warmup_iters:
             comm.Barrier()
-            t_start_total = time.perf_counter()
+            # a bit subtle: we need to use time.time() instead of perf_counter()
+            # because a rank can move to a new node, and perf_counter() will
+            # be based off a different clock
+            t_start_total = time.time()
             total_comm_time = 0.0
 
-        comm_start_time = time.perf_counter()
+        comm_start_time = time.time()
 
         for i in range(kernels.DIR_COUNT):
             if not bounds[i]:
@@ -231,7 +234,7 @@ def main(comm):
         if active_send_reqs:
             commi.request.Waitall(active_send_reqs)
 
-        comm_end_time = time.perf_counter()
+        comm_end_time = time.time()
         if current_iter >= warmup_iters:
             total_comm_time += (comm_end_time - comm_start_time)
 
@@ -270,7 +273,7 @@ def main(comm):
             if rank == 0:
                 average_invocations = max_invocations / (total_invocations / num_procs)
                 print(f"Load imbalance factor: {average_invocations}")
-        compute_start_time = time.perf_counter()
+        compute_start_time = time.time()
 
         for k in range(num_invocations):
             if k > 0:
@@ -281,9 +284,12 @@ def main(comm):
             stream.synchronize()
 
 
-        compute_end_time = time.perf_counter()
+        compute_end_time = time.time()
 
-        if current_iter % lb_period == 0:
+        if (current_iter > 0) and (rank == 0) and (current_iter % 25 == 0):
+            print(f"Iteration {current_iter} completed, total elapsed time: {time.time() - t_start_total} seconds")
+
+        if lb_period < (n_iters + warmup_iters) and current_iter % lb_period == 0:
             del d_temperature
             del d_new_temperature
             del h_ghosts
@@ -305,7 +311,7 @@ def main(comm):
 
 
     comm.Barrier() # Ensure all ranks finish loop
-    t_end_total = time.perf_counter()
+    t_end_total = time.time()
 
     elapsed_time = t_end_total - t_start_total
     avg_comm_time = total_comm_time / n_iters if n_iters > 0 else 0
